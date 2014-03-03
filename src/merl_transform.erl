@@ -164,11 +164,16 @@ rewrite_pattern(Line, Text) ->
     %% and then use real matching to bind the Erlang-level variables
     T0 = merl:template(merl:quote(Line, Text)),
     Vars = [V || V <- merl:template_vars(T0), is_inline_metavar(V)],
-    {merl:tsubst(T0, [{V, {var_to_tag(V)}} || V <- Vars]),
+    {merl:tsubst(T0, [subst_var(V) || V <- Vars]),
      erl_syntax:list([erl_syntax:tuple([erl_syntax:abstract(var_to_tag(V)),
                                         erl_syntax:variable(var_name(V))])
                       || V <- Vars]),
      Vars}.
+
+subst_var({'*', Var}) ->
+    {Var, {'*', var_to_tag(Var)}};
+subst_var(Var) ->
+    {Var, {var_to_tag(Var)}}.
 
 var_name(V) when is_integer(V) ->
     V1 = if V > 99, (V rem 100) =:= 99 ->
@@ -178,9 +183,11 @@ var_name(V) when is_integer(V) ->
             true -> V
          end,
     list_to_atom("Q" ++ integer_to_list(V1));
+var_name({'*', V}) -> var_name(V);
 var_name(V) -> V.
 
 var_to_tag(V) when is_integer(V) -> V;
+var_to_tag({'*', V}) -> var_to_tag(V);
 var_to_tag(V) ->
     list_to_atom(string:to_lower(atom_to_list(V))).
 
@@ -254,6 +261,8 @@ is_inline_metavar(Var) when is_atom(Var) ->
     is_erlang_var(atom_to_list(Var));
 is_inline_metavar(Var) when is_integer(Var) ->
     Var > 9 andalso (Var rem 10) =:= 9;
+is_inline_metavar({'*', Var}) ->
+    is_inline_metavar(Var);
 is_inline_metavar(_) -> false.
 
 is_erlang_var([C|_]) when C >= $A, C =< $Z ; C >= $À, C =< $Þ, C /= $× ->

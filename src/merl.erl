@@ -464,7 +464,16 @@ meta_template_2(Var, V) when is_integer(Var) ->
 %% @doc Return an ordered list of the metavariables in the template.
 
 template_vars(Template) ->
-    template_vars(Template, []).
+    lists:sort(
+      fun compare_var/2,
+      template_vars(Template, [])).
+
+compare_var({'*', A}, B) ->
+    compare_var(A, B);
+compare_var(A, {'*', B}) ->
+    compare_var(A, B);
+compare_var(A, B) ->
+    A =< B.
 
 template_vars(Templates, Vars) when is_list(Templates) ->
     lists:foldl(fun template_vars_1/2, Vars, Templates);
@@ -475,9 +484,9 @@ template_vars_1({template, _, _, Groups}, Vars) ->
     lists:foldl(fun (G, V) -> lists:foldl(fun template_vars_1/2, V, G) end,
                 Vars, Groups);
 template_vars_1({Var}, Vars) ->
-    ordsets:add_element(Var, Vars);
-template_vars_1({'*',Var}, Vars) ->
-    ordsets:add_element(Var, Vars);
+    [Var|Vars];
+template_vars_1({'*',_}=Var, Vars) ->
+    [Var|Vars];
 template_vars_1(_, Vars) ->
     Vars.
 
