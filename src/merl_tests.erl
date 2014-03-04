@@ -1,4 +1,14 @@
 %% ---------------------------------------------------------------------
+%% Licensed under the Apache License, Version 2.0 (the "License"); you may
+%% not use this file except in compliance with the License. You may obtain
+%% a copy of the License at <http://www.apache.org/licenses/LICENSE-2.0>
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
+%%
 %% @author Richard Carlsson <carlsson.richard@gmail.com>
 %% @copyright 2012 Richard Carlsson
 %% @doc Unit tests for merl.
@@ -113,6 +123,19 @@ quote_case_clause_test_() ->
                    f(?Q(["{X, Y} when X < Y -> -1;",
                          "{X, Y} when X > Y -> 1;"
                          "_ -> 0"])))].
+
+quote_comment_test_() ->
+    [?_assertEqual("%% comment preserved\n"
+                   "{foo, 42}",
+                  f(?Q(["%% comment preserved",
+                        "{foo, 42}"]))),
+     ?_assertEqual("{foo, 42}"
+                   "%% comment preserved\n",
+                   f(?Q(["{foo, 42}",
+                         "%% comment preserved"]))),
+     ?_assertEqual("  % just a comment (with indent)\n",
+                  f(?Q("  % just a comment (with indent)")))
+    ].
 
 metavar_test_() ->
     [?_assertEqual("'@foo'", f(merl:tree(merl:template(?Q("'@foo'"))))),
@@ -497,6 +520,20 @@ meta_case_test_() ->
                              ?Q("{foo, [_@Bar], '@Baz'}") ->
                                  ?Q("{3, _@Baz}");
                              _ -> Tree
+                         end
+                     end)),
+     ?_assertEqual("{2, foo, Bar, Baz, Bar(), Baz()}",
+                   f(begin
+                         Tree = ?Q("foo(Bar, Baz) -> Bar(), Baz()."),
+                         case Tree of
+                             ?Q("'@Func'(_@Args) -> _@Body.") ->
+                                 ?Q("{1, _@Func, _@Args, _@Body}");
+
+                             ?Q("'@Func'(_@@Args) -> _@@Body.") ->
+                                 ?Q("{2, _@Func, _@Args, _@Body}");
+
+                             ?Q("'@Func'(_@Args, Baz) -> _@Body1, _@Body2.") ->
+                                 ?Q("{3, _@Func, _@Args, _@Body1, _@Body2}")
                          end
                      end))
     ].

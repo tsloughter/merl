@@ -219,11 +219,9 @@ quote_1(StartLine, StartCol, Text) ->
                    _ when StartCol =:= undefined -> StartLine;
                    _ -> {StartLine, StartCol}
                end,
-    {ok, Ts, _} = erl_scan:string(flatten_text(Text), StartPos),
-    case parse_1(Ts) of
-        [T] -> T;
-        Other -> Other
-    end.
+    FlatText = flatten_text(Text),
+    {ok, Ts, _} = erl_scan:string(FlatText, StartPos),
+    merge_comments(StartLine, erl_comment_scan:string(FlatText), parse_1(Ts)).
 
 parse_1(Ts) ->
     %% if dot tokens are present, it is assumed that the text represents
@@ -464,7 +462,16 @@ meta_template_2(Var, V) when is_integer(Var) ->
 %% @doc Return an ordered list of the metavariables in the template.
 
 template_vars(Template) ->
-    template_vars(Template, []).
+    lists:sort(
+      fun compare_var/2,
+      template_vars(Template, [])).
+
+compare_var({'*', A}, B) ->
+    compare_var(A, B);
+compare_var(A, {'*', B}) ->
+    compare_var(A, B);
+compare_var(A, B) ->
+    A =< B.
 
 template_vars(Templates, Vars) when is_list(Templates) ->
     lists:foldl(fun template_vars_1/2, Vars, Templates);
@@ -475,9 +482,9 @@ template_vars_1({template, _, _, Groups}, Vars) ->
     lists:foldl(fun (G, V) -> lists:foldl(fun template_vars_1/2, V, G) end,
                 Vars, Groups);
 template_vars_1({Var}, Vars) ->
-    ordsets:add_element(Var, Vars);
-template_vars_1({'*',Var}, Vars) ->
-    ordsets:add_element(Var, Vars);
+    [Var|Vars];
+template_vars_1({'*',_}=Var, Vars) ->
+    [Var|Vars];
 template_vars_1(_, Vars) ->
     Vars.
 
@@ -916,3 +923,34 @@ make_tree(record_field, [[N], []]) -> erl_syntax:record_field(N);
 make_tree(record_field, [[N], [E]]) -> erl_syntax:record_field(N, E);
 make_tree(Type, Groups) ->
     erl_syntax:make_tree(Type, Groups).
+
+merge_comments(_StartLine, [], [T]) -> T;
+merge_comments(_StartLine, [], Ts) -> Ts;
+merge_comments(StartLine, Comments, Ts) ->
+    merge_comments(StartLine, Comments, Ts, []).
+
+merge_comments(_StartLine, [], [], [T]) -> T;
+merge_comments(_StartLine, [], Ts, Acc) ->
+    lists:reverse(Acc, Ts);
+merge_comments(StartLine, Cs, [], Acc) ->
+    merge_comments(StartLine, [], [],
+                   [erl_syntax:set_pos(
+                      erl_syntax:comment(Indent, Text),
+                      StartLine + Line - 1)
+                    || {Line, _, Indent, Text} <- Cs] ++ Acc);
+merge_comments(StartLine, [C|Cs], [T|Ts], Acc) ->
+    {Line, _Col, Indent, Text} = C,
+    CommentLine = StartLine + Line - 1,
+    case erl_syntax:get_pos(T) of
+        Pos when Pos < CommentLine ->
+            %% TODO: traverse sub-tree rather than only the top level nodes
+            merge_comments(StartLine, [C|Cs], Ts, [T|Acc]);
+        CommentLine ->
+            Tc = erl_syntax:add_postcomments(
+                   [erl_syntax:comment(Indent, Text)], T),
+            merge_comments(StartLine, Cs, [Tc|Ts], Acc);
+        _ ->
+            Tc = erl_syntax:add_precomments(
+                   [erl_syntax:comment(Indent, Text)], T),
+            merge_comments(StartLine, Cs, [Tc|Ts], Acc)
+    end.
