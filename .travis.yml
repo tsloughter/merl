@@ -5,7 +5,7 @@ otp_release:
    - 17.1
    - 17.0
    - R16B03-1
-   - R16B03
+#   - R16B03 not supported
    - R16B02
    - R16B01
    - R16B
@@ -16,5 +16,6 @@ otp_release:
 
 script:
   - make
+  - make test
 notifications:
   email: false
